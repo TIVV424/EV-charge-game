@@ -197,7 +197,7 @@ if __name__ == "__main__":
     TAU = 0.5
     ALPHA = 0.5
     THETA = 0.5
-    W = 100000
+    W = 10000
     O0 = {j: 100 for j in STATIONS.keys()}  # Example initial utility values
 
     optimal_solution, model = solve_cooperative_model(TOTAL_DEMAND, STATIONS, FIXED_COST_RATE, TAU, ALPHA, THETA)
@@ -216,6 +216,3 @@ if __name__ == "__main__":
 
 # %%
 results, df = save_solution_full(model, station_ids, filename_prefix="demo_case_full_solution")
-
-
-# %%

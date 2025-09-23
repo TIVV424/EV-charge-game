@@ -94,7 +94,12 @@ def save_results(stations, flows, filename="nash_equilibrium_results.csv"):
         cost = p_j + TAU * travel_time
 
         data.append(
-            {"Station": j, "Price": p_j, "Capacity": c_j, "Flow": q_j, "Travel Time": travel_time, "Cost": cost}
+            {"Station": j, 
+             "Price": p_j, 
+             "Capacity": c_j, 
+             "Flow": q_j, 
+             "TravelTime": travel_time, 
+             "TravelerCost": cost}
         )
 
     df = pd.DataFrame(data)
