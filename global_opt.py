@@ -47,7 +47,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
     # Travel time for each station
     for j in station_ids:
         # add some boudnary constraints to avoid numerical issues
-        model.addConstr(flows[j] <= 5 + capacities[j], name=f"Capacity_Overflow_Constraint1_{j}")
+        # model.addConstr(flows[j] <= 5 + capacities[j], name=f"Capacity_Overflow_Constraint1_{j}")
 
         # eq (2) travel time function
         model.addConstr(aux_03[j] * capacities[j] == flows[j], name=f"Aux_03_Definition_Constraint_{j}")
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     TAU = 0.5
     ALPHA = 0.5
     THETA = 0.5
-    W = 1
+    W = 100000
     O0 = {j: 100 for j in STATIONS.keys()}  # Example initial utility values
 
     optimal_solution, model = solve_cooperative_model(TOTAL_DEMAND, STATIONS, FIXED_COST_RATE, TAU, ALPHA, THETA)

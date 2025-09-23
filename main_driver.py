@@ -1,7 +1,6 @@
 # main_driver.py
 import copy
 from lower_level_sue import solve_sue_msa
-from upper_level_milp import solve_company_milp
 from upper_level_milp import nash_equilibrium
 
 # Problem parameters and initial state
