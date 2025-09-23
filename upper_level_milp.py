@@ -20,9 +20,11 @@ def best_response_station_joint(j, stations, demand, theta, tau, alpha,
         # Solve approximate SUE
         flows = solve_sue_msa(demand, stations, theta, tau, alpha)
         q_j = flows[j]
+        wait_time = max(0, q_j - c_j) / c_j
+        wait_time_penalty = tau * wait_time
         fixed_cost = fixed_cost_rate * c_j
         operating_cost = operating_cost_rate * q_j
-        profit = p_j * q_j - fixed_cost - operating_cost
+        profit = p_j * q_j - fixed_cost - operating_cost - wait_time_penalty * q_j
         return -profit  # negative for minimization
     
     bounds = [price_bounds, capacity_bounds]

@@ -1,7 +1,7 @@
 
 import math
 
-def solve_sue_msa(demand, stations, theta, tau, alpha, convergence_tolerance=1e-4, max_iter=1000, step_cap=0.2):
+def solve_sue_msa(demand, stations, theta, tau, alpha, convergence_tolerance=1e-3, max_iter=1000, step_cap=0.2):
     """
     Solves the Stochastic User Equilibrium (SUE) problem using the MSA algorithm.
     Inputs:
