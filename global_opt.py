@@ -21,18 +21,18 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
     Returns:
         tuple: A dictionary of optimal prices and capacities for all stations.
     """
-    
+
     model = gp.Model("Global_Cooperative_Optimization")
 
     # Decision variables for all stations
     station_ids = list(stations.keys())
 
     prices = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="price")
-    capacities = model.addVars(station_ids, lb = 1, ub = demand, vtype=GRB.INTEGER, name="capacity")
-    flows = model.addVars(station_ids, ub = demand, vtype=GRB.CONTINUOUS, name="flow")
+    capacities = model.addVars(station_ids, lb=1, ub=demand, vtype=GRB.INTEGER, name="capacity")
+    flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, name="flow")
     travel_time = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="travel_time")
-    traveler_cost = model.addVars(station_ids,vtype=GRB.CONTINUOUS, name="traveler_cost")
-    log_aux = model.addVars(station_ids, lb = 1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
+    traveler_cost = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="traveler_cost")
+    log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
     exp_aux = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="expMNL")
     aux_01 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_01")
     aux_02 = model.addVars(station_ids, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="aux_02")
@@ -56,9 +56,9 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
             name=f"Travel_Time_Constraint_{j}",
         )
         model.addConstr(travel_time[j] >= stations[j]["T_j0"], name=f"Min_Travel_Time_Constraint_{j}")
-        
+
         # eq (1) traveler cost function
-        model.addConstr( #
+        model.addConstr(  #
             traveler_cost[j] >= prices[j] + tau * travel_time[j], name=f"Traveler_Cost_Definition_Constraint_{j}"
         )
 
@@ -66,8 +66,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
         model.addConstr(aux_01[j] == O0[j] - traveler_cost[j], name=f"Aux_01_Definition_Constraint_{j}")
         model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
 
-
-        model.addConstr(aux_02[j] == -1 * THETA * traveler_cost[j],name=f"Aux_02_Definition_Constraint_{j}")
+        model.addConstr(aux_02[j] == -1 * THETA * traveler_cost[j], name=f"Aux_02_Definition_Constraint_{j}")
         model.addGenConstrExp(aux_02[j], exp_aux[j], name="Exp_Constraint")
 
     infra_cost = gp.quicksum(fixed_cost_rate * capacities[j] for j in station_ids)
@@ -84,7 +83,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
     # Optimize the model
     model.setObjective(infra_cost - NBS_cost, GRB.MINIMIZE)
 
-    model.Params.NonConvex = 2    # required for bilinear/log terms
+    model.Params.NonConvex = 2  # required for bilinear/log terms
     model.Params.NumericFocus = 3
     model.Params.BarConvTol = 1e-8
     model.optimize()
@@ -108,6 +107,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
 
         return None
 
+
 def save_solution_full(model, station_ids, filename_prefix="solution_full"):
     """
     Extract all decision variables from Gurobi model and save as JSON + CSV.
@@ -126,14 +126,16 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
         json.dump(results, f, indent=4)
 
     # Save CSV (flatten into dataframe)
-    df = pd.DataFrame({
-        "Station": station_ids,
-        # "Price": [results["prices"][j] for j in station_ids],
-        "Capacity": [results["capacities"][j] for j in station_ids],
-        "Flow": [results["flows"][j] for j in station_ids],
-        "TravelTime": [results["travel_time"][j] for j in station_ids],
-        "TravelerCost": [results["traveler_cost"][j] for j in station_ids],
-    })
+    df = pd.DataFrame(
+        {
+            "Station": station_ids,
+            # "Price": [results["prices"][j] for j in station_ids],
+            "Capacity": [results["capacities"][j] for j in station_ids],
+            "Flow": [results["flows"][j] for j in station_ids],
+            "TravelTime": [results["travel_time"][j] for j in station_ids],
+            "TravelerCost": [results["traveler_cost"][j] for j in station_ids],
+        }
+    )
     df.to_csv(f"{filename_prefix}.csv", index=False)
     print(f"✅ Saved solution as {filename_prefix}.json and {filename_prefix}.csv")
 
@@ -142,7 +144,6 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
 
 def visualize_solution_full(results, title="Globally Optimal Cooperative Solution"):
     stations = list(results["capacities"].keys())
-
 
     # Core decision vars
     prices = list(results["prices"].values())
@@ -177,8 +178,8 @@ def visualize_solution_full(results, title="Globally Optimal Cooperative Solutio
     # Travel Time & Traveler Cost (grouped)
     width = 0.35
     x = range(len(stations))
-    axs[1, 1].bar([i - width/2 for i in x], travel_time, width, label="Travel Time", color="orange")
-    axs[1, 1].bar([i + width/2 for i in x], traveler_cost, width, label="Traveler Cost", color="purple")
+    axs[1, 1].bar([i - width / 2 for i in x], travel_time, width, label="Travel Time", color="orange")
+    axs[1, 1].bar([i + width / 2 for i in x], traveler_cost, width, label="Traveler Cost", color="purple")
     axs[1, 1].set_title("Time & Cost per Station")
     axs[1, 1].set_xlabel("Station")
     axs[1, 1].set_ylabel("Value")
@@ -215,7 +216,6 @@ if __name__ == "__main__":
 
 # %%
 results, df = save_solution_full(model, station_ids, filename_prefix="demo_case_full_solution")
-
 
 
 # %%
