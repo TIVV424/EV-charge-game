@@ -5,7 +5,7 @@ from lower_level_sue import solve_sue_msa
 from scipy.optimize import minimize
 
 def best_response_station_joint(j, stations, demand, theta, tau, alpha,
-                                price_bounds=(0.01, 10), capacity_bounds=(1, 20),
+                                price_bounds=(0.01, 100), capacity_bounds=(1, 100),
                                 fixed_cost_rate=1.5, operating_cost_rate=0.8):
     """
     Computes the joint best-response (price and capacity) for station j.

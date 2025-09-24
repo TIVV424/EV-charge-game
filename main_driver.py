@@ -9,17 +9,18 @@ import pandas as pd
 # Problem parameters and initial state
 NUM_COMPANIES = 4
 TOTAL_DEMAND = 100
-THETA = 1
-TAU = 1
-ALPHA = 0.1
-FIXED_COST_RATE = 1.5
-OPERATING_COST_RATE = 0.8
+THETA = 1 # scale parameter for logit model
+TAU = 0.5 # cost per unit time (min)
+ALPHA = 20 # congestion factor - converting to minutes
+FIXED_COST_RATE = 15 # fixed cost per unit capacity
+OPERATING_COST_RATE = 10 # operating cost per unit flow
 
+# T_j0: free-flow travel time for each station, unit value is minutes
 initial_stations = {
-    1: {"price": 2, "capacity": 5, "T_j0": 5, "company": 1},
-    2: {"price": 2, "capacity": 6, "T_j0": 7, "company": 2},
-    3: {"price": 2, "capacity": 5, "T_j0": 4, "company": 3},
-    4: {"price": 2, "capacity": 4, "T_j0": 3, "company": 4},
+    1: {"price": 2, "capacity": 10, "T_j0": 7, "company": 1},
+    2: {"price": 2, "capacity": 40, "T_j0": 10, "company": 2},
+    3: {"price": 2, "capacity": 10, "T_j0": 5, "company": 3},
+    4: {"price": 2, "capacity": 10, "T_j0": 3, "company": 4},
 }
 
 

@@ -193,10 +193,11 @@ def visualize_solution_full(results, title="Globally Optimal Cooperative Solutio
 if __name__ == "__main__":
     TOTAL_DEMAND = 100
     STATIONS = {1: {"T_j0": 5}, 2: {"T_j0": 7}, 3: {"T_j0": 4}, 4: {"T_j0": 3}}
-    FIXED_COST_RATE = 1.5
-    TAU = 0.5
-    ALPHA = 0.5
-    THETA = 0.5
+    THETA = 1 # scale parameter for logit model
+    TAU = 0.5 # cost per unit time (min)
+    ALPHA = 20 # congestion factor - converting to minutes
+    FIXED_COST_RATE = 15 # fixed cost per unit capacity
+    OPERATING_COST_RATE = 10 # operating cost per unit flow
     W = 10000
     O0 = {j: 100 for j in STATIONS.keys()}  # Example initial utility values
 
