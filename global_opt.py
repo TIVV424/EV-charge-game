@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta):
+def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     """
     Finds the global optimal solution by minimizing total system cost.
 
@@ -27,14 +27,14 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
     # Decision variables for all stations
     station_ids = list(stations.keys())
 
-    prices = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="price")
-    capacities = model.addVars(station_ids, lb=1, ub=demand, vtype=GRB.INTEGER, name="capacity")
-    flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, name="flow")
+    prices = model.addVars(station_ids, lb=0.1, ub=50, vtype=GRB.CONTINUOUS, name="price")
+    capacities = model.addVars(station_ids, lb=1, ub=demand / 3, vtype=GRB.INTEGER, name="capacity")
+    flows = model.addVars(station_ids, ub=demand, vtype=GRB.INTEGER, name="flow")
     travel_time = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="travel_time")
     traveler_cost = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="traveler_cost")
-    log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
+    # log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
     exp_aux = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="expMNL")
-    aux_01 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_01")
+    # aux_01 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_01")
     aux_02 = model.addVars(station_ids, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="aux_02")
     aux_03 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_03")
 
@@ -59,21 +59,30 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
 
         # eq (1) traveler cost function
         model.addConstr(  #
-            traveler_cost[j] >= prices[j] + tau * travel_time[j], name=f"Traveler_Cost_Definition_Constraint_{j}"
+            traveler_cost[j] == prices[j] + tau * travel_time[j], name=f"Traveler_Cost_Definition_Constraint_{j}"
         )
 
-        # NBS component
-        model.addConstr(aux_01[j] == O0[j] - traveler_cost[j], name=f"Aux_01_Definition_Constraint_{j}")
-        model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
+        # # NBS component
+        # model.addConstr(aux_01[j] == O0[j] - traveler_cost[j], name=f"Aux_01_Definition_Constraint_{j}")
+        # model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
 
-        model.addConstr(aux_02[j] == -1 * THETA * traveler_cost[j], name=f"Aux_02_Definition_Constraint_{j}")
+        # SUE component
+        model.addConstr(aux_02[j] == -1 * lam * traveler_cost[j], name=f"Aux_02_Definition_Constraint_{j}")
         model.addGenConstrExp(aux_02[j], exp_aux[j], name="Exp_Constraint")
 
     infra_cost = gp.quicksum(fixed_cost_rate * capacities[j] for j in station_ids)
-    NBS_cost = W * gp.quicksum(log_aux[j] for j in station_ids)
+    # NBS_cost = W * gp.quicksum(log_aux[j] for j in station_ids)
+    SUM_TIME_cost = tau * gp.quicksum(flows[j] * travel_time[j] for j in station_ids)
+    SUM_CUS_UTILITY = gp.quicksum(traveler_cost[j] * flows[j] for j in station_ids)
+    PROFIT = gp.quicksum(prices[j] * flows[j] for j in station_ids)
+
+    # NBS_obj = infra_cost - NBS_cost
+    Uti_obj_wo_pro = SUM_TIME_cost + infra_cost
+    Uti_obj_wi_pro = SUM_TIME_cost + infra_cost - PROFIT
+    Customer_obj = SUM_CUS_UTILITY + infra_cost
 
     # Constraints
-    # q_j = N \cdot \frac{\exp(-\lambda \cdot G_j)}{\sum_{k=1}^{M} \exp(-\lambda \cdot G_k)} \label{eq:demand_allocation}
+    # q_j = N \cdot \frac{\exp(-\lam \cdot G_j)}{\sum_{k=1}^{M} \exp(-\lam \cdot G_k)} \label{eq:demand_allocation}
 
     denom = model.addVar(vtype=GRB.CONTINUOUS, name="denom")
     model.addConstr(denom == gp.quicksum(exp_aux[j] for j in station_ids))
@@ -81,19 +90,20 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, theta
     model.addConstr(gp.quicksum(flows[j] for j in station_ids) == demand, name="Demand_Constraint")
 
     # Optimize the model
-    model.setObjective(infra_cost - NBS_cost, GRB.MINIMIZE)
+    model.setObjective(Uti_obj_wo_pro, GRB.MINIMIZE)
 
     model.Params.NonConvex = 2  # required for bilinear/log terms
-    model.Params.NumericFocus = 3
-    model.Params.BarConvTol = 1e-8
+    model.Params.TimeLimit = 200  # 5 minutes
+    model.Params.MIPGap = 0.02
     model.optimize()
 
-    if model.status == GRB.OPTIMAL:
+    if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT or model.status == GRB.INTERRUPTED:
         optimal_solution = {
             "prices": {j: prices[j].X for j in station_ids},
             "capacities": {j: capacities[j].X for j in station_ids},
             "flows": {j: flows[j].X for j in station_ids},
             "travel_time": {j: travel_time[j].X for j in station_ids},
+            "traveler_cost": {j: traveler_cost[j].X for j in station_ids},
         }
         return optimal_solution, model
     else:
@@ -129,7 +139,7 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
     df = pd.DataFrame(
         {
             "Station": station_ids,
-            # "Price": [results["prices"][j] for j in station_ids],
+            "Price": [results["prices"][j] for j in station_ids],
             "Capacity": [results["capacities"][j] for j in station_ids],
             "Flow": [results["flows"][j] for j in station_ids],
             "TravelTime": [results["travel_time"][j] for j in station_ids],
@@ -192,22 +202,24 @@ def visualize_solution_full(results, title="Globally Optimal Cooperative Solutio
 # Example usage
 if __name__ == "__main__":
     TOTAL_DEMAND = 100
-    STATIONS = {1: {"T_j0": 5}, 2: {"T_j0": 7}, 3: {"T_j0": 4}, 4: {"T_j0": 3}}
-    THETA = 1 # scale parameter for logit model
-    TAU = 0.5 # cost per unit time (min)
-    ALPHA = 20 # congestion factor - converting to minutes
-    FIXED_COST_RATE = 15 # fixed cost per unit capacity
-    OPERATING_COST_RATE = 10 # operating cost per unit flow
-    W = 10000
+    STATIONS = {1: {"T_j0": 6 + 20}, 2: {"T_j0": 5 + 20}, 3: {"T_j0": 4 + 20}, 4: {"T_j0": 3 + 20}}
+    LAMBDA = 0.6  # scale parameter for logit model
+    TAU = 0.2  # cost per unit time (min)
+    ALPHA = 20  # congestion factor - converting to minutes
+    FIXED_COST_RATE = 15  # fixed cost per unit capacity
+    OPERATING_COST_RATE = 10  # operating cost per unit flow
+    W = 100
     O0 = {j: 100 for j in STATIONS.keys()}  # Example initial utility values
 
-    optimal_solution, model = solve_cooperative_model(TOTAL_DEMAND, STATIONS, FIXED_COST_RATE, TAU, ALPHA, THETA)
+    optimal_solution, model = solve_cooperative_model(TOTAL_DEMAND, STATIONS, FIXED_COST_RATE, TAU, ALPHA, LAMBDA)
 
     if optimal_solution:
         print("\nGlobally Optimal Cooperative Solution:")
-        # print("Optimal Prices:", {j: f"{p:.2f}" for j, p in optimal_solution["prices"].items()})
+        print("Optimal Prices:", {j: f"{p:.2f}" for j, p in optimal_solution["prices"].items()})
         print("Optimal Capacities:", {j: f"{c:.2f}" for j, c in optimal_solution["capacities"].items()})
         print("Optimal Flows:", {j: f"{q:.2f}" for j, q in optimal_solution["flows"].items()})
+        print("Optimal Travel Times:", {j: f"{tt:.2f}" for j, tt in optimal_solution["travel_time"].items()})
+        print("Optimal Traveler Costs:", {j: f"{tc:.2f}" for j, tc in optimal_solution["traveler_cost"].items()})
 
         station_ids = list(STATIONS.keys())
         results, df = save_solution_full(model, station_ids, filename_prefix="demo_case_full_solution")

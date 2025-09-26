@@ -5,7 +5,7 @@ from lower_level_sue import solve_sue_msa
 from scipy.optimize import minimize
 
 def best_response_station_joint(j, stations, demand, theta, tau, alpha,
-                                price_bounds=(0.01, 100), capacity_bounds=(1, 100),
+                                price_bounds=(0.01, 30), capacity_bounds=(1, 100),
                                 fixed_cost_rate=1.5, operating_cost_rate=0.8):
     """
     Computes the joint best-response (price and capacity) for station j.
@@ -91,7 +91,7 @@ def nash_equilibrium(stations, demand, theta, tau, alpha, tol=1e-4, max_iter=200
             max_change = max(max_change, abs(p_new - p_old), max_capacity_change)
 
             stations[j]['price'] = p_new
-            stations[j]['capacity'] = round(c_new)
+            stations[j]['capacity'] = c_new #round(c_new)
 
             print(f"Station {j} updated price to {p_new:.4f}")
             print(f"Station {j} updated capacity to {c_new}")

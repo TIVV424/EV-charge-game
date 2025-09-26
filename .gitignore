@@ -52,3 +52,4 @@ main/__pycache__/
 *.html
 *.pdf
 *.pyc
+*.csv
