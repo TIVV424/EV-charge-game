@@ -49,7 +49,7 @@ def solve_sue_msa(demand, stations, theta, tau, alpha, convergence_tolerance=1e-
         #Check for convergence
         flow_diff = sum(abs(new_flows[j] - flows[j]) for j in station_ids)
         if flow_diff < convergence_tolerance:
-            print(f"MSA converged in {s} iterations.")
+            # print(f"MSA converged in {s} iterations.")
             return new_flows
 
         flows = new_flows

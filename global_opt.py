@@ -4,7 +4,7 @@ from gurobipy import GRB
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
-
+from plot_result import visualize_solution_full
 
 def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     """
@@ -29,12 +29,12 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
 
     prices = model.addVars(station_ids, lb=0.1, ub=50, vtype=GRB.CONTINUOUS, name="price")
     capacities = model.addVars(station_ids, lb=1, ub=demand / 3, vtype=GRB.INTEGER, name="capacity")
-    flows = model.addVars(station_ids, ub=demand, vtype=GRB.INTEGER, name="flow")
+    flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, n8ame="flow")
     travel_time = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="travel_time")
     traveler_cost = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="traveler_cost")
-    # log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
+    log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
     exp_aux = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="expMNL")
-    # aux_01 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_01")
+    aux_01 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_01")
     aux_02 = model.addVars(station_ids, lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS, name="aux_02")
     aux_03 = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="aux_03")
 
@@ -46,13 +46,10 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
 
     # Travel time for each station
     for j in station_ids:
-        # add some boudnary constraints to avoid numerical issues
-        # model.addConstr(flows[j] <= 5 + capacities[j], name=f"Capacity_Overflow_Constraint1_{j}")
-
         # eq (2) travel time function
-        model.addConstr(aux_03[j] * capacities[j] == flows[j], name=f"Aux_03_Definition_Constraint_{j}")
+        model.addConstr(aux_03[j] * capacities[j] == (flows[j] - capacities[j]), name=f"Aux_03_Definition_Constraint_{j}")
         model.addConstr(
-            travel_time[j] >= stations[j]["T_j0"] + alpha * (aux_03[j] - 1),
+            travel_time[j] >= stations[j]["T_j0"] + alpha * aux_03[j],
             name=f"Travel_Time_Constraint_{j}",
         )
         model.addConstr(travel_time[j] >= stations[j]["T_j0"], name=f"Min_Travel_Time_Constraint_{j}")
@@ -62,21 +59,23 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
             traveler_cost[j] == prices[j] + tau * travel_time[j], name=f"Traveler_Cost_Definition_Constraint_{j}"
         )
 
-        # # NBS component
-        # model.addConstr(aux_01[j] == O0[j] - traveler_cost[j], name=f"Aux_01_Definition_Constraint_{j}")
-        # model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
+        # NBS component # flows[j]
+        model.addConstr(aux_01[j] ==  (O0[j] - traveler_cost[j]), name=f"Aux_01_Definition_Constraint_{j}")
+        model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
 
         # SUE component
         model.addConstr(aux_02[j] == -1 * lam * traveler_cost[j], name=f"Aux_02_Definition_Constraint_{j}")
         model.addGenConstrExp(aux_02[j], exp_aux[j], name="Exp_Constraint")
 
     infra_cost = gp.quicksum(fixed_cost_rate * capacities[j] for j in station_ids)
-    # NBS_cost = W * gp.quicksum(log_aux[j] for j in station_ids)
     SUM_TIME_cost = tau * gp.quicksum(flows[j] * travel_time[j] for j in station_ids)
     SUM_CUS_UTILITY = gp.quicksum(traveler_cost[j] * flows[j] for j in station_ids)
     PROFIT = gp.quicksum(prices[j] * flows[j] for j in station_ids)
 
-    # NBS_obj = infra_cost - NBS_cost
+
+    NBS_cost = W * gp.quicksum(log_aux[j] for j in station_ids)
+    NBS_obj = infra_cost - NBS_cost
+
     Uti_obj_wo_pro = SUM_TIME_cost + infra_cost
     Uti_obj_wi_pro = SUM_TIME_cost + infra_cost - PROFIT
     Customer_obj = SUM_CUS_UTILITY + infra_cost
@@ -90,7 +89,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     model.addConstr(gp.quicksum(flows[j] for j in station_ids) == demand, name="Demand_Constraint")
 
     # Optimize the model
-    model.setObjective(Uti_obj_wo_pro, GRB.MINIMIZE)
+    model.setObjective(NBS_cost, GRB.MINIMIZE)
 
     model.Params.NonConvex = 2  # required for bilinear/log terms
     model.Params.TimeLimit = 200  # 5 minutes
@@ -152,51 +151,6 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
     return results, df
 
 
-def visualize_solution_full(results, title="Globally Optimal Cooperative Solution"):
-    stations = list(results["capacities"].keys())
-
-    # Core decision vars
-    prices = list(results["prices"].values())
-    capacities = list(results["capacities"].values())
-    flows = list(results["flows"].values())
-
-    # Time/cost vars
-    travel_time = list(results["travel_time"].values())
-    traveler_cost = list(results["traveler_cost"].values())
-
-    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-    fig.suptitle(title, fontsize=14, fontweight="bold")
-
-    # Prices
-    axs[0, 0].bar(stations, prices, color="skyblue")
-    axs[0, 0].set_title("Prices")
-    axs[0, 0].set_xlabel("Station")
-    axs[0, 0].set_ylabel("Price")
-
-    # Capacities
-    axs[0, 1].bar(stations, capacities, color="lightgreen")
-    axs[0, 1].set_title("Capacities")
-    axs[0, 1].set_xlabel("Station")
-    axs[0, 1].set_ylabel("Capacity")
-
-    # Flows
-    axs[1, 0].bar(stations, flows, color="salmon")
-    axs[1, 0].set_title("Flows")
-    axs[1, 0].set_xlabel("Station")
-    axs[1, 0].set_ylabel("Flow")
-
-    # Travel Time & Traveler Cost (grouped)
-    width = 0.35
-    x = range(len(stations))
-    axs[1, 1].bar([i - width / 2 for i in x], travel_time, width, label="Travel Time", color="orange")
-    axs[1, 1].bar([i + width / 2 for i in x], traveler_cost, width, label="Traveler Cost", color="purple")
-    axs[1, 1].set_title("Time & Cost per Station")
-    axs[1, 1].set_xlabel("Station")
-    axs[1, 1].set_ylabel("Value")
-    axs[1, 1].legend()
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.show()
 
 
 # Example usage
