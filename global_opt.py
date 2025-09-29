@@ -2,17 +2,20 @@
 import gurobipy as gp
 from gurobipy import GRB
 import json
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from plot_result import visualize_solution_full
 
-def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
+
+def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha, lam, obj, W, O0):
     """
     Finds the global optimal solution by minimizing total system cost.
 
     Args:
         demand (float): Total number of travelers (N).
-        stations (dict): A dictionary of stations with their properties (T_j0).
+        stations (dict): A dictionary of stations.
+        T_j0 (dict): Free-flow travel time for each station.
         fixed_cost_rate (float): Fixed cost per unit of capacity.
         operating_cost_rate (float): Operating cost per unit of flow.
         tau (float): Travel time cost coefficient.
@@ -25,11 +28,11 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     model = gp.Model("Global_Cooperative_Optimization")
 
     # Decision variables for all stations
-    station_ids = list(stations.keys())
+    station_ids = list(stations)
 
     prices = model.addVars(station_ids, lb=0.1, ub=50, vtype=GRB.CONTINUOUS, name="price")
-    capacities = model.addVars(station_ids, lb=1, ub=demand / 3, vtype=GRB.INTEGER, name="capacity")
-    flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, n8ame="flow")
+    capacities = model.addVars(station_ids, lb=5, ub=30, vtype=GRB.INTEGER, name="capacity")
+    flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, name="flow")
     travel_time = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="travel_time")
     traveler_cost = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="traveler_cost")
     log_aux = model.addVars(station_ids, lb=1e-6, vtype=GRB.CONTINUOUS, name="logNBS")
@@ -47,20 +50,22 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     # Travel time for each station
     for j in station_ids:
         # eq (2) travel time function
-        model.addConstr(aux_03[j] * capacities[j] == (flows[j] - capacities[j]), name=f"Aux_03_Definition_Constraint_{j}")
         model.addConstr(
-            travel_time[j] >= stations[j]["T_j0"] + alpha * aux_03[j],
+            aux_03[j] * capacities[j] == (flows[j] - capacities[j]), name=f"Aux_03_Definition_Constraint_{j}"
+        )
+        model.addConstr(
+            travel_time[j] >= T_j0[j] + alpha * aux_03[j],
             name=f"Travel_Time_Constraint_{j}",
         )
-        model.addConstr(travel_time[j] >= stations[j]["T_j0"], name=f"Min_Travel_Time_Constraint_{j}")
+        model.addConstr(travel_time[j] >= T_j0[j], name=f"Min_Travel_Time_Constraint_{j}")
 
         # eq (1) traveler cost function
         model.addConstr(  #
             traveler_cost[j] == prices[j] + tau * travel_time[j], name=f"Traveler_Cost_Definition_Constraint_{j}"
         )
 
-        # NBS component # flows[j]
-        model.addConstr(aux_01[j] ==  (O0[j] - traveler_cost[j]), name=f"Aux_01_Definition_Constraint_{j}")
+        # NBS component #flows[j] * 
+        model.addConstr(aux_01[j] == (O0[j] - traveler_cost[j]), name=f"Aux_01_Definition_Constraint_{j}")
         model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
 
         # SUE component
@@ -72,13 +77,21 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     SUM_CUS_UTILITY = gp.quicksum(traveler_cost[j] * flows[j] for j in station_ids)
     PROFIT = gp.quicksum(prices[j] * flows[j] for j in station_ids)
 
-
-    NBS_cost = W * gp.quicksum(log_aux[j] for j in station_ids)
-    NBS_obj = infra_cost - NBS_cost
-
+    NBS_obj = infra_cost - W * gp.quicksum(log_aux[j] for j in station_ids)
     Uti_obj_wo_pro = SUM_TIME_cost + infra_cost
     Uti_obj_wi_pro = SUM_TIME_cost + infra_cost - PROFIT
     Customer_obj = SUM_CUS_UTILITY + infra_cost
+
+    if obj == "NBS":
+        objective_method = NBS_obj - infra_cost
+    elif obj == "Utility_wo_pro":
+        objective_method = Uti_obj_wo_pro
+    elif obj == "Utility_wi_pro":
+        objective_method = Uti_obj_wi_pro
+    elif obj == "Customer_utility":
+        objective_method = Customer_obj
+    else:
+        raise ValueError("Invalid objective method specified.")
 
     # Constraints
     # q_j = N \cdot \frac{\exp(-\lam \cdot G_j)}{\sum_{k=1}^{M} \exp(-\lam \cdot G_k)} \label{eq:demand_allocation}
@@ -87,13 +100,14 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
     model.addConstr(denom == gp.quicksum(exp_aux[j] for j in station_ids))
     model.addConstrs((flows[j] * denom == demand * exp_aux[j] for j in station_ids), name="MNL_reform")
     model.addConstr(gp.quicksum(flows[j] for j in station_ids) == demand, name="Demand_Constraint")
+    model.addConstr(gp.quicksum(capacities[j] for j in station_ids) == 50, name="Total_Capacity_Constraint")
 
     # Optimize the model
-    model.setObjective(NBS_cost, GRB.MINIMIZE)
+    model.setObjective(objective_method, GRB.MINIMIZE)
 
     model.Params.NonConvex = 2  # required for bilinear/log terms
     model.Params.TimeLimit = 200  # 5 minutes
-    model.Params.MIPGap = 0.02
+    # model.Params.MIPGap = 0.02
     model.optimize()
 
     if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT or model.status == GRB.INTERRUPTED:
@@ -102,7 +116,9 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
             "capacities": {j: capacities[j].X for j in station_ids},
             "flows": {j: flows[j].X for j in station_ids},
             "travel_time": {j: travel_time[j].X for j in station_ids},
+            "time_cost": {j: tau * travel_time[j].X for j in station_ids},
             "traveler_cost": {j: traveler_cost[j].X for j in station_ids},
+            "infra_cost": {j: fixed_cost_rate * capacities[j].X for j in station_ids},
         }
         return optimal_solution, model
     else:
@@ -117,7 +133,7 @@ def solve_cooperative_model(demand, stations, fixed_cost_rate, tau, alpha, lam):
         return None
 
 
-def save_solution_full(model, station_ids, filename_prefix="solution_full"):
+def save_solution_full(model, params, station_ids, filename_prefix):
     """
     Extract all decision variables from Gurobi model and save as JSON + CSV.
     """
@@ -129,6 +145,8 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
         "travel_time": {j: model.getVarByName(f"travel_time[{j}]").X for j in station_ids},
         "traveler_cost": {j: model.getVarByName(f"traveler_cost[{j}]").X for j in station_ids},
     }
+
+    results.update(params)  # add params to results for record
 
     # Save JSON
     with open(f"{filename_prefix}.json", "w") as f:
@@ -143,6 +161,7 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
             "Flow": [results["flows"][j] for j in station_ids],
             "TravelTime": [results["travel_time"][j] for j in station_ids],
             "TravelerCost": [results["traveler_cost"][j] for j in station_ids],
+            "TotalDemand": params["TOTAL_DEMAND"],
         }
     )
     df.to_csv(f"{filename_prefix}.csv", index=False)
@@ -151,21 +170,43 @@ def save_solution_full(model, station_ids, filename_prefix="solution_full"):
     return results, df
 
 
-
-
 # Example usage
 if __name__ == "__main__":
-    TOTAL_DEMAND = 100
-    STATIONS = {1: {"T_j0": 6 + 20}, 2: {"T_j0": 5 + 20}, 3: {"T_j0": 4 + 20}, 4: {"T_j0": 3 + 20}}
-    LAMBDA = 0.6  # scale parameter for logit model
-    TAU = 0.2  # cost per unit time (min)
-    ALPHA = 20  # congestion factor - converting to minutes
-    FIXED_COST_RATE = 15  # fixed cost per unit capacity
-    OPERATING_COST_RATE = 10  # operating cost per unit flow
-    W = 100
-    O0 = {j: 100 for j in STATIONS.keys()}  # Example initial utility values
+    folder = "results/global/"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
-    optimal_solution, model = solve_cooperative_model(TOTAL_DEMAND, STATIONS, FIXED_COST_RATE, TAU, ALPHA, LAMBDA)
+    TOTAL_DEMAND = 100
+    STATIONS = {1, 2, 3, 4}
+    T_j0 = {1: 10, 2: 7, 3: 5, 4: 3}  # free-flow travel time for each station, unit value is minutes
+    LAMBDA = 0.6  # scale parameter for logit model
+    TAU = 0.5  # cost per unit time (min)
+    ALPHA = 20  # congestion factor - converting to minutes
+    FIXED_COST_RATE = 20 # {1: 10, 2: 10, 3: 10, 4: 10}  # fixed cost per unit capacity
+    OPERATING_COST_RATE = 10  # operating cost per unit flow
+    W = 5000
+    O0 = {j: 100 for j in STATIONS}  # Example initial utility values
+    obj_list = ["NBS", "Utility_wo_pro", "Utility_wi_pro", "Customer_utility"]
+    obj = "Utility_wo_pro"  # choose from obj_list
+
+    params = {
+        "TOTAL_DEMAND": TOTAL_DEMAND,
+        "T_j0": T_j0,
+        "LAMBDA": LAMBDA,
+        "TAU": TAU,
+        "ALPHA": ALPHA,
+        "FIXED_COST_RATE": FIXED_COST_RATE,
+        "OPERATING_COST_RATE": OPERATING_COST_RATE,
+        "W": W,
+        "O0": O0,
+        "Objective": obj,
+    }
+
+    optimal_solution, model = solve_cooperative_model(
+        TOTAL_DEMAND, STATIONS, T_j0, FIXED_COST_RATE, TAU, ALPHA, LAMBDA, obj, W=W, O0=O0
+    )
+
+    filename_prefix = folder +  f"(50INFRA)global_opt_{obj}_demand{TOTAL_DEMAND}_lam{LAMBDA}_tau{TAU}_alpha{ALPHA}_oper{OPERATING_COST_RATE}_W{W}"
 
     if optimal_solution:
         print("\nGlobally Optimal Cooperative Solution:")
@@ -173,13 +214,13 @@ if __name__ == "__main__":
         print("Optimal Capacities:", {j: f"{c:.2f}" for j, c in optimal_solution["capacities"].items()})
         print("Optimal Flows:", {j: f"{q:.2f}" for j, q in optimal_solution["flows"].items()})
         print("Optimal Travel Times:", {j: f"{tt:.2f}" for j, tt in optimal_solution["travel_time"].items()})
+        print("Optimal Time Costs:", {j: f"{tc:.2f}" for j, tc in optimal_solution["time_cost"].items()})
         print("Optimal Traveler Costs:", {j: f"{tc:.2f}" for j, tc in optimal_solution["traveler_cost"].items()})
+        print("Infrastructure Cost:", {j: f"{ic:.2f}" for j, ic in optimal_solution["infra_cost"].items()})
+        print(f"Total Infrastructure Cost: {sum(optimal_solution['infra_cost'].values()):.2f}")
 
-        station_ids = list(STATIONS.keys())
-        results, df = save_solution_full(model, station_ids, filename_prefix="demo_case_full_solution")
+        station_ids = list(STATIONS)
+        results, df = save_solution_full(model, params, station_ids, filename_prefix)
 
         # Visualize
         visualize_solution_full(results)
-
-# %%
-results, df = save_solution_full(model, station_ids, filename_prefix="demo_case_full_solution")

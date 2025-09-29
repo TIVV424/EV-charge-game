@@ -3,57 +3,68 @@
 import copy
 from lower_level_sue import solve_sue_msa
 from upper_level_milp import nash_equilibrium
+from save_results_nash import save_results_full
 import numpy as np
 import pandas as pd
+import json
+import os
+
+folder = "results_final/nash/"
+if not os.path.exists(folder):
+    os.makedirs(folder)
 
 # Problem parameters and initial state
 NUM_COMPANIES = 4
 TOTAL_DEMAND = 100
-THETA = 1  # scale parameter for logit model
+LAMBDA = 0.6  # scale parameter for logit model
 TAU = 0.5  # cost per unit time (min)
 ALPHA = 20  # congestion factor - converting to minutes
 FIXED_COST_RATE = 15  # fixed cost per unit capacity
-OPERATING_COST_RATE = 15  # operating cost per unit flow
-
+OPERATING_COST_RATE = 5  # operating cost per unit flow
+# TAX_LIST = [0, -1, -1, 0.8]  # tax/subsidy for each company
+TAX_LIST = [0, 0, 0, 0]  # tax/subsidy for each company
 # T_j0: free-flow travel time for each station, unit value is minutes
+MAX_CAPACITY = 100
 initial_stations = {
-    1: {"price": 2, "capacity": 10, "T_j0": (7 + 20), "company": 1},
-    2: {"price": 2, "capacity": 10, "T_j0": (10 + 20), "company": 2},
-    3: {"price": 2, "capacity": 10, "T_j0": (5 + 20), "company": 3},
-    4: {"price": 2, "capacity": 10, "T_j0": (3 + 20), "company": 4},
+    1: {"price": 20, "capacity": 20, "T_j0": 10, "company": 1},
+    2: {"price": 20, "capacity": 20, "T_j0": 7, "company": 2},
+    3: {"price": 20, "capacity": 20, "T_j0": 5, "company": 3},
+    4: {"price": 20, "capacity": 20, "T_j0": 3, "company": 4},
+}
+
+filename_prefix = (
+    folder
+    + f"NASH_lam{LAMBDA}_tau{TAU}_alpha{ALPHA}_oper{OPERATING_COST_RATE}_fix{FIXED_COST_RATE}_maxcap{MAX_CAPACITY}_tax{'_'.join([str(t) for t in TAX_LIST])}"
+)
+
+params = {
+    "TOTAL_DEMAND": TOTAL_DEMAND,
+    "T_j0": {j: props["T_j0"] for j, props in initial_stations.items()},
+    "LAMBDA": LAMBDA,
+    "TAU": TAU,
+    "ALPHA": ALPHA,
+    "FIXED_COST_RATE": FIXED_COST_RATE,
+    "OPERATING_COST_RATE": OPERATING_COST_RATE,
+    "TAX_LIST": TAX_LIST,
+    "MAX_CAPACITY": MAX_CAPACITY,
 }
 
 
-# save results
-def save_results(stations, flows, filename="nash_equilibrium_results.csv"):
-    # flow, price, capacity, wait time, travel time, cost
-    data = []
-    for j, props in stations.items():
-        p_j = props["price"]
-        c_j = props["capacity"]
-        T_j0 = props["T_j0"]
-        q_j = flows[j]
-
-        # travel time
-        congestion = (q_j - c_j) if q_j > c_j else 0
-        travel_time = T_j0 + ALPHA * congestion / c_j
-
-        # cost
-        cost = p_j + TAU * travel_time
-
-        data.append(
-            {"Station": j, "Price": p_j, "Capacity": c_j, "Flow": q_j, "TravelTime": travel_time, "TravelerCost": cost}
-        )
-
-    df = pd.DataFrame(data)
-    df.to_csv(filename, index=False)
-
-
 final_stations, final_flows = nash_equilibrium(
-    initial_stations, TOTAL_DEMAND, THETA, TAU, ALPHA, FIXED_COST_RATE, OPERATING_COST_RATE, tol=1e-3, max_iter=200
+    initial_stations,
+    TOTAL_DEMAND,
+    LAMBDA,
+    TAU,
+    ALPHA,
+    FIXED_COST_RATE,
+    OPERATING_COST_RATE,
+    TAX_LIST,
+    tol=1e-2,
+    max_iter=5000,
+    max_capacity=MAX_CAPACITY,
 )
 
-save_results(final_stations, final_flows)
+save_results_full(final_stations, final_flows, params, filename_prefix)
 
 print("Final Prices & Flows:")
 for j in final_stations:
@@ -62,6 +73,5 @@ for j in final_stations:
         Flow = {final_flows[j]:.2f}, \
         Capacity = {final_stations[j]['capacity']}"
     )
-
 
 # %%
