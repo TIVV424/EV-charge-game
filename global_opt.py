@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from plot_result import visualize_solution_full
 
 
-def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha, lam, obj, W, O0):
+def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha, lam, obj, O0, max_num_capacity):
     """
     Finds the global optimal solution by minimizing total system cost.
 
@@ -31,7 +31,7 @@ def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha,
     station_ids = list(stations)
 
     prices = model.addVars(station_ids, lb=0.1, ub=50, vtype=GRB.CONTINUOUS, name="price")
-    capacities = model.addVars(station_ids, lb=5, ub=30, vtype=GRB.INTEGER, name="capacity")
+    capacities = model.addVars(station_ids, lb=5, ub=[50,50,50,50], vtype=GRB.INTEGER, name="capacity")
     flows = model.addVars(station_ids, ub=demand, vtype=GRB.CONTINUOUS, name="flow")
     travel_time = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="travel_time")
     traveler_cost = model.addVars(station_ids, vtype=GRB.CONTINUOUS, name="traveler_cost")
@@ -65,31 +65,25 @@ def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha,
         )
 
         # NBS component #flows[j] * 
-        model.addConstr(aux_01[j] == (O0[j] - traveler_cost[j]), name=f"Aux_01_Definition_Constraint_{j}")
+        model.addConstr(aux_01[j] == flows[j] * (O0[j] - traveler_cost[j]), name=f"Aux_01_Definition_Constraint_{j}")
         model.addGenConstrLog(aux_01[j], log_aux[j], name="Log_Constraint")
 
         # SUE component
         model.addConstr(aux_02[j] == -1 * lam * traveler_cost[j], name=f"Aux_02_Definition_Constraint_{j}")
         model.addGenConstrExp(aux_02[j], exp_aux[j], name="Exp_Constraint")
 
+
     infra_cost = gp.quicksum(fixed_cost_rate * capacities[j] for j in station_ids)
     SUM_TIME_cost = tau * gp.quicksum(flows[j] * travel_time[j] for j in station_ids)
     SUM_CUS_UTILITY = gp.quicksum(traveler_cost[j] * flows[j] for j in station_ids)
     PROFIT = gp.quicksum(prices[j] * flows[j] for j in station_ids)
 
-    NBS_obj = infra_cost - W * gp.quicksum(log_aux[j] for j in station_ids)
-    Uti_obj_wo_pro = SUM_TIME_cost + infra_cost
-    Uti_obj_wi_pro = SUM_TIME_cost + infra_cost - PROFIT
-    Customer_obj = SUM_CUS_UTILITY + infra_cost
+    NBS_obj = - gp.quicksum(log_aux[j] for j in station_ids)
 
     if obj == "NBS":
-        objective_method = NBS_obj - infra_cost
-    elif obj == "Utility_wo_pro":
-        objective_method = Uti_obj_wo_pro
-    elif obj == "Utility_wi_pro":
-        objective_method = Uti_obj_wi_pro
-    elif obj == "Customer_utility":
-        objective_method = Customer_obj
+        objective_method = NBS_obj
+    elif obj == "utilitarian":
+        objective_method = SUM_TIME_cost
     else:
         raise ValueError("Invalid objective method specified.")
 
@@ -100,7 +94,7 @@ def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha,
     model.addConstr(denom == gp.quicksum(exp_aux[j] for j in station_ids))
     model.addConstrs((flows[j] * denom == demand * exp_aux[j] for j in station_ids), name="MNL_reform")
     model.addConstr(gp.quicksum(flows[j] for j in station_ids) == demand, name="Demand_Constraint")
-    model.addConstr(gp.quicksum(capacities[j] for j in station_ids) == 50, name="Total_Capacity_Constraint")
+    model.addConstr(gp.quicksum(capacities[j] for j in station_ids) == max_num_capacity, name="Total_Capacity_Constraint")
 
     # Optimize the model
     model.setObjective(objective_method, GRB.MINIMIZE)
@@ -172,7 +166,7 @@ def save_solution_full(model, params, station_ids, filename_prefix):
 
 # Example usage
 if __name__ == "__main__":
-    folder = "results/global/"
+    folder = "results_final/global/"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -182,12 +176,16 @@ if __name__ == "__main__":
     LAMBDA = 0.6  # scale parameter for logit model
     TAU = 0.5  # cost per unit time (min)
     ALPHA = 20  # congestion factor - converting to minutes
-    FIXED_COST_RATE = 20 # {1: 10, 2: 10, 3: 10, 4: 10}  # fixed cost per unit capacity
-    OPERATING_COST_RATE = 10  # operating cost per unit flow
-    W = 5000
-    O0 = {j: 100 for j in STATIONS}  # Example initial utility values
-    obj_list = ["NBS", "Utility_wo_pro", "Utility_wi_pro", "Customer_utility"]
-    obj = "Utility_wo_pro"  # choose from obj_list
+    FIXED_COST_RATE = 15 # {1: 10, 2: 10, 3: 10, 4: 10}  # fixed cost per unit capacity
+    OPERATING_COST_RATE = 5  # operating cost per unit flow
+    # W = 5000
+    O0 = {1: 13.6, 
+          2: 10.9, 
+          3: 8.5, 
+          4: 7.1}  # Example initial utility values
+    obj_list = ["NBS", "utilitarian",]
+    obj = "NBS"  # choose from obj_list
+    MAX_CAPACITY = 84  # total capacity constraint
 
     params = {
         "TOTAL_DEMAND": TOTAL_DEMAND,
@@ -197,16 +195,18 @@ if __name__ == "__main__":
         "ALPHA": ALPHA,
         "FIXED_COST_RATE": FIXED_COST_RATE,
         "OPERATING_COST_RATE": OPERATING_COST_RATE,
-        "W": W,
+        # "W": W,
         "O0": O0,
         "Objective": obj,
+        "MAX_CAPACITY": MAX_CAPACITY,
     }
 
     optimal_solution, model = solve_cooperative_model(
-        TOTAL_DEMAND, STATIONS, T_j0, FIXED_COST_RATE, TAU, ALPHA, LAMBDA, obj, W=W, O0=O0
+        TOTAL_DEMAND, STATIONS, T_j0, FIXED_COST_RATE, TAU, ALPHA, LAMBDA, obj, O0=O0, 
+        max_num_capacity=MAX_CAPACITY
     )
 
-    filename_prefix = folder +  f"(50INFRA)global_opt_{obj}_demand{TOTAL_DEMAND}_lam{LAMBDA}_tau{TAU}_alpha{ALPHA}_oper{OPERATING_COST_RATE}_W{W}"
+    filename_prefix = folder +  f"O0_global_opt_{obj}_tau{TAU}_alpha{ALPHA}_oper{OPERATING_COST_RATE}_fix{FIXED_COST_RATE}_maxcap{MAX_CAPACITY}"
 
     if optimal_solution:
         print("\nGlobally Optimal Cooperative Solution:")

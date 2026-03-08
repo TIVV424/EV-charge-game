@@ -1,7 +1,7 @@
 
 import math
 
-def solve_sue_msa(demand, stations, theta, tau, alpha, tax = 0, convergence_tolerance=1e-3, max_iter=1000, step_cap=0.2):
+def solve_sue_msa(demand, stations, theta, tau, alpha, tax_list, convergence_tolerance=1e-3, max_iter=1000, step_cap=0.2):
     """
     Solves the Stochastic User Equilibrium (SUE) problem using the MSA algorithm.
     Inputs:
@@ -26,7 +26,7 @@ def solve_sue_msa(demand, stations, theta, tau, alpha, tax = 0, convergence_tole
             c_j = stations[j]['capacity']
             T_j0 = stations[j]['T_j0']
 
-            p_j_cus = p_j + tax
+            p_j_cus = p_j + tax_list[j-1]
             
             # Simplified travel time model based on the provided equation
             # travel_time_j = T_j0 + alpha * max(0, flows[j] - c_j)/c_j
