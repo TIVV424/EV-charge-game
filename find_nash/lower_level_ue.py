@@ -1,15 +1,26 @@
+#!/usr/bin/env python3
+"""
+Created on Sept 2025
+
+Author: Ruiting Wang
+
+Solves the User Equilibrium problem using the MSA algorithm.
+"""
+
 
 import math
 
-def solve_sue_msa(demand, stations, theta, tau, alpha, tax_list, convergence_tolerance=1e-3, max_iter=1000, step_cap=0.2):
+def solve_msa(demand, stations, theta, tau, alpha, tax_list, convergence_tolerance=1e-3, max_iter=1000, step_cap=0.2):
     """
-    Solves the Stochastic User Equilibrium (SUE) problem using the MSA algorithm.
+    Solves the User Equilibrium problem using the MSA algorithm.
     Inputs:
         demand (float): Total number of travelers (N).
         stations (dict): A dictionary of stations with their properties (p, c, T0).
         theta (float): Logit scale parameter.
         tau (float): Travel time cost coefficient.
         alpha (float): Congestion sensitivity coefficient.
+        tax_list (list): List of taxes for each station (length should match number of stations).
+            Note: set to 0 for no tax, positive for tax, negative for subsidy.
         convergence_tolerance (float): Stopping criterion for MSA.
         max_iter (int): Maximum number of iterations.
     Outputs:
@@ -19,7 +30,7 @@ def solve_sue_msa(demand, stations, theta, tau, alpha, tax_list, convergence_tol
     flows = {j: demand / len(station_ids) for j in station_ids}  # Initialize flows equally
 
     for s in range(1, max_iter + 1):
-        # Step 1.1: Calculate disutility (generalized cost) for current flows
+        # Calculate disutility (generalized cost) for current flows
         generalized_costs = {}
         for j in station_ids:
             p_j = stations[j]['price']
@@ -48,7 +59,7 @@ def solve_sue_msa(demand, stations, theta, tau, alpha, tax_list, convergence_tol
         new_flows = {j: flows[j] + step_size * (auxiliary_flows[j] - flows[j])
                      for j in station_ids}
 
-        #Check for convergence
+        # Check for convergence
         flow_diff = sum(abs(new_flows[j] - flows[j]) for j in station_ids)
         if flow_diff < convergence_tolerance:
             # print(f"MSA converged in {s} iterations.")

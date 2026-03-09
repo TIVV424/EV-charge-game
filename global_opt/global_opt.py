@@ -1,11 +1,17 @@
-# global_optimization_cooperative_model.py
+#%%
+
+import sys
+mother_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if mother_dir not in sys.path:
+    sys.path.insert(0, mother_dir)
+
 import gurobipy as gp
 from gurobipy import GRB
 import json
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
-from plot_result import visualize_solution_full
+from helper_fn.plot_result import visualize_solution_full
 
 
 def solve_cooperative_model(demand, stations, T_j0, fixed_cost_rate, tau, alpha, lam, obj, O0, max_num_capacity):
@@ -166,7 +172,7 @@ def save_solution_full(model, params, station_ids, filename_prefix):
 
 # Example usage
 if __name__ == "__main__":
-    folder = "results_final/global/"
+    folder = "../results_final/global/"
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -224,3 +230,5 @@ if __name__ == "__main__":
 
         # Visualize
         visualize_solution_full(results)
+
+# %%

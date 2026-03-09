@@ -1,15 +1,25 @@
+#!/usr/bin/env python3
+"""
+Created on Sept 2025
+
+Author: Ruiting Wang
+
+This script serves as the main driver for finding the 
+Nash equilibrium in a competitive charging station market. 
+It initializes the problem parameters, runs the iterative 
+process to find the equilibrium, and saves the results.
+"""
 # %%
-# main_driver.py
-import copy
-from lower_level_sue import solve_sue_msa
+import sys
+mother_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if mother_dir not in sys.path:
+    sys.path.insert(0, mother_dir)
+
 from upper_level_milp import nash_equilibrium
-from save_results_nash import save_results_full
-import numpy as np
-import pandas as pd
-import json
+from helper_fn.save_results_nash import save_results_full
 import os
 
-folder = "results_final/nash/"
+folder = "../results_final/nash/"
 if not os.path.exists(folder):
     os.makedirs(folder)
 
@@ -24,7 +34,6 @@ OPERATING_COST_RATE = 5  # operating cost per unit flow
 TAX_LIST = [0,0,0,0]  # tax/subsidy for each company
 
 
-# TAX_LIST = [0, 0, 0, 0]  # tax/subsidy for each company
 # T_j0: free-flow travel time for each station, unit value is minutes
 MAX_CAPACITY = 84
 initial_stations = {
