@@ -7,8 +7,9 @@ Author: Ruiting Wang
 
 import gurobipy as gp
 from gurobipy import GRB
-from lower_level_ue import solve_msa
+from find_nash.lower_level_ue import solve_msa
 from scipy.optimize import minimize
+
 
 
 def best_response_station_joint(
